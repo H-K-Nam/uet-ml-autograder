@@ -1,0 +1,13 @@
+# Core autograder dependencies
+docker>=7.0.0
+nbformat>=5.9.0
+click>=8.1.0
+pydantic>=2.5.0
+pyyaml>=6.0.1
+
+# Scientific & Evaluation libraries
+numpy>=1.24.0
+scikit-learn>=1.3.0
+
+# Testing & Development
+pytest>=7.4.0
