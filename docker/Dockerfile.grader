@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+# Prevent python from writing pyc files and buffering stdout/stderr
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install standard machine learning packages
+RUN pip install --no-cache-dir \
+    numpy==1.26.4 \
+    scipy==1.12.0 \
+    scikit-learn==1.4.1.post1 \
+    pandas==2.2.1
+
+# Create unprivileged runner user
+RUN useradd -m -u 1001 grader
+USER grader
+
+WORKDIR /sandbox
+
+CMD ["python", "runner.py"]
