@@ -31,7 +31,14 @@ from src.sandbox import DockerSandbox
     default=False,
     help="Run locally in subprocess instead of Docker (fallback mode).",
 )
-def main(submission: Path, assignment: Path, local: bool):
+@click.option(
+    "--timeout",
+    "-t",
+    default=30,
+    type=int,
+    help="Execution timeout in seconds (default 30s).",
+)
+def main(submission: Path, assignment: Path, local: bool, timeout: int):
     """Grade a Machine Learning submission against assignment test suite."""
     click.echo(f"=== Grading Submission: {submission.name} ===")
     click.echo(f"Assignment Directory: {assignment}")
@@ -67,28 +74,34 @@ def main(submission: Path, assignment: Path, local: bool):
             shutil.copytree(data_dir, temp_dir / "data")
 
         # 5. Execute
+        is_timeout = False
+        oom = False
         if local:
             click.echo("Running in local mode (subprocess)...")
             import subprocess
-            proc = subprocess.run(
-                [sys.executable, str(runner_path)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            stdout = proc.stdout
-            stderr = proc.stderr
-            exit_code = proc.returncode
-            timeout = False
-            oom = False
+            try:
+                proc = subprocess.run(
+                    [sys.executable, str(runner_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                stdout = proc.stdout
+                stderr = proc.stderr
+                exit_code = proc.returncode
+            except subprocess.TimeoutExpired as e:
+                stdout = (e.stdout or "") if hasattr(e, "stdout") else ""
+                stderr = f"Process timed out after {timeout} seconds."
+                exit_code = -1
+                is_timeout = True
         else:
             click.echo("Running in Docker sandbox...")
-            sandbox = DockerSandbox()
+            sandbox = DockerSandbox(timeout_seconds=timeout)
             result = sandbox.run_grading(temp_dir, runner_script="runner.py")
             stdout = result.stdout
             stderr = result.stderr
             exit_code = result.exit_code
-            timeout = result.timeout
+            is_timeout = result.timeout
             oom = result.oom_killed
 
         # 6. Report results
@@ -99,14 +112,18 @@ def main(submission: Path, assignment: Path, local: bool):
             click.echo(f"Errors/Logs:\n{stderr.strip()}", err=True)
 
         click.echo("\n--- Final Verdict ---")
-        if timeout:
+        if is_timeout:
             click.echo("Verdict: TIME LIMIT EXCEEDED (Timeout)")
+            sys.exit(1)
         elif oom:
             click.echo("Verdict: MEMORY LIMIT EXCEEDED (OOM)")
+            sys.exit(1)
         elif exit_code == 0:
             click.echo("Verdict: ALL TESTS PASSED (100/100)")
+            sys.exit(0)
         else:
             click.echo(f"Verdict: FAILED (Exit Code {exit_code})")
+            sys.exit(1)
 
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
